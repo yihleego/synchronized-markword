@@ -30,7 +30,6 @@ public class SynchronizedMarkWordTests {
         }
         s.append("\n");
         System.out.println(s);
-        //logger.debug("{}", s);
     }
 
     /**
@@ -40,14 +39,16 @@ public class SynchronizedMarkWordTests {
     public void testBiasedLocking_Reenter() {
         print("无锁时");
 
-        synchronized (lock) {
-            print("[当前线程] 获取锁");
+        runUntilNotAlive(() -> {
             synchronized (lock) {
-                print("[当前线程] 重入获取锁");
+                print("[线程-0] 获取锁");
+                synchronized (lock) {
+                    print("[线程-0] 重入获取锁");
+                }
+                print("[线程-0] 重入释放锁");
             }
-            print("[当前线程] 重入释放锁");
-        }
-        print("[当前线程] 释放锁");
+            print("[线程-0] 释放锁");
+        });
     }
 
     /**
@@ -58,21 +59,22 @@ public class SynchronizedMarkWordTests {
     public void testBiasedLocking_Upgrade() {
         print("无锁时");
 
-        synchronized (lock) {
-            print("[当前线程] 获取锁");
-        }
-        print("[当前线程] 释放锁");
-
-        sleep(1000);
-
-        Thread t0 = run(() -> {
+        run(() -> {
             synchronized (lock) {
-                print("[新线程] 获取锁");
+                print("[线程-0] 获取锁");
             }
-            print("[新线程] 释放锁");
+            print("[线程-0] 释放锁");
+            while (true) {
+                sleep(1);
+            }
         });
 
-        waitUntilNotAlive(t0);
+        runUntilNotAlive(() -> {
+            synchronized (lock) {
+                print("[线程-1] 获取锁");
+            }
+            print("[线程-1] 释放锁");
+        });
     }
 
     /**
@@ -136,47 +138,12 @@ public class SynchronizedMarkWordTests {
     }
 
     /**
-     * 轻量级锁膨胀为重量级锁-自旋达到上限
-     * 后一个线程自旋达到上限，膨胀为重量级锁。
+     * 轻量级锁膨胀为重量级锁
+     * 多个线程同时竞争，直接膨胀为重量级锁。
      * 禁用偏向锁 -XX:-UseBiasedLocking
      */
     @Test
-    public void testLightweightLocking_InflateWithSpinLimit() {
-        print("无锁时");
-
-        Thread t0 = run(() -> {
-            synchronized (lock) {
-                print("[线程-0] 获取锁");
-                // 使第二个线程自旋达到上限
-                busy();
-            }
-            print("[线程-0] 释放锁");
-        });
-
-        Thread t1 = run(() -> {
-            synchronized (lock) {
-                print("[线程-1] 获取锁");
-            }
-            print("[线程-1] 释放锁");
-        });
-
-        Thread t2 = run(() -> {
-            synchronized (lock) {
-                print("[线程-2] 获取锁");
-            }
-            print("[线程-2] 释放锁");
-        });
-
-        waitUntilNotAlive(t0, t1, t2);
-    }
-
-    /**
-     * 轻量级锁膨胀为重量级锁-多线程竞争
-     * 三个线程同时竞争，直接膨胀为重量级锁。
-     * 禁用偏向锁 -XX:-UseBiasedLocking
-     */
-    @Test
-    public void testLightweightLocking_InflateWithMultithreading() {
+    public void testLightweightLocking_Inflate() {
         print("无锁时");
 
         Thread t0 = run(() -> {
@@ -193,14 +160,7 @@ public class SynchronizedMarkWordTests {
             print("[线程-1] 释放锁");
         });
 
-        Thread t2 = run(() -> {
-            synchronized (lock) {
-                print("[线程-2] 获取锁");
-            }
-            print("[线程-2] 释放锁");
-        });
-
-        waitUntilNotAlive(t0, t1, t2);
+        waitUntilNotAlive(t0, t1);
     }
 
     /**
@@ -275,7 +235,6 @@ public class SynchronizedMarkWordTests {
 
     public void print(String prefix) {
         System.out.println(prefix + "\n" + ClassLayout.parseInstance(lock).toPrintable());
-        //logger.debug("{}\n{}", prefix, ClassLayout.parseInstance(lock).toPrintable());
     }
 
     public int busy() {
