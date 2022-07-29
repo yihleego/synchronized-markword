@@ -54,35 +54,6 @@ public class SynchronizedMarkWordTests {
     }
 
     /**
-     * 偏向锁升级轻量级锁
-     * 当前线程进行加锁解锁操作，由于当前线程会一直处于存活状态，所以后一个线程无法获取偏向锁，升级为轻量级锁。
-     */
-    @Test
-    public void testBiasedLocking_Upgrade() {
-        print("无锁时");
-        // 创建[线程-0]，获取偏向锁后释放，并保持线程处于活跃状态
-        run(() -> {
-            synchronized (lock) {
-                print("[线程-0] 获取锁");
-            }
-            print("[线程-0] 释放锁");
-            // 保持线程处于存活状态
-            while (true) {
-                sleep(1);
-            }
-        });
-        // 保证[线程-0]释放锁
-        sleep(1000);
-        // 创建[线程-1]，再次获取锁，此时升级为轻量级锁
-        run(() -> {
-            synchronized (lock) {
-                print("[线程-1] 获取锁");
-            }
-            print("[线程-1] 释放锁");
-        });
-    }
-
-    /**
      * 偏向锁重偏向
      * 三个线程依次获取锁，前一个线程执行完成，且线程为非存活状态后，再执行后一个线程。
      */
@@ -119,6 +90,62 @@ public class SynchronizedMarkWordTests {
                 print("[线程-2] 获取锁");
             }
             print("[线程-2] 释放锁");
+        });
+    }
+
+    /**
+     * 偏向锁 GC 触发偏向锁撤销
+     * 仅在 OpenJDK 9 及之后的版本中出现
+     */
+    @Test
+    public void testBiasedLocking_RevokeWithGC() {
+        print("无锁时");
+        // 创建[线程-0]，获取偏向锁后释放
+        runUntilNotAlive(() -> {
+            synchronized (lock) {
+                print("[线程-0] 获取锁");
+            }
+            print("[线程-0] 释放锁");
+        });
+        // 手动调用 GC 方法
+        System.gc();
+        // 在 GC 后，偏向锁被撤销
+        print("在 GC 后");
+        // 创建[线程-1]，又可以获取偏向锁
+        runUntilNotAlive(() -> {
+            synchronized (lock) {
+                print("[线程-1] 获取锁");
+            }
+            print("[线程-1] 释放锁");
+        });
+    }
+
+    /**
+     * 偏向锁升级轻量级锁
+     * 当前线程进行加锁解锁操作，由于当前线程会一直处于存活状态，所以后一个线程无法获取偏向锁，升级为轻量级锁。
+     */
+    @Test
+    public void testBiasedLocking_Upgrade() {
+        print("无锁时");
+        // 创建[线程-0]，获取偏向锁后释放，并保持线程处于活跃状态
+        run(() -> {
+            synchronized (lock) {
+                print("[线程-0] 获取锁");
+            }
+            print("[线程-0] 释放锁");
+            // 保持线程处于存活状态
+            while (true) {
+                sleep(1);
+            }
+        });
+        // 保证[线程-0]释放锁
+        sleep(1000);
+        // 创建[线程-1]，再次获取锁，此时升级为轻量级锁
+        run(() -> {
+            synchronized (lock) {
+                print("[线程-1] 获取锁");
+            }
+            print("[线程-1] 释放锁");
         });
     }
 

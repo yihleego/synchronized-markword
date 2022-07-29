@@ -115,122 +115,6 @@ Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
 
 [SynchronizedMarkWordTests#testBiasedLocking_Reenter](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L39)
 
-## 偏向锁升级轻量级锁
-
-### 运行参数
-
-- `-XX:BiasedLockingStartupDelay=0`：设置偏向锁延迟为`0ms`，即不延迟。
-- `-Xlog:gc*`：打印 GC 日志。
-
-### 代码
-
-```java
-print("无锁时");
-// 创建[线程-0]，获取偏向锁后释放，并保持线程处于活跃状态
-run(() -> {
-    synchronized (lock) {
-        print("[线程-0] 获取锁");
-    }
-    print("[线程-0] 释放锁");
-    // 保持线程处于存活状态
-    while (true) {
-        sleep(1);
-    }
-});
-// 保证[线程-0]释放锁
-sleep(1000);
-// 创建[线程-1]，再次获取锁，此时升级为轻量级锁
-run(() -> {
-    synchronized (lock) {
-        print("[线程-1] 获取锁");
-    }
-    print("[线程-1] 释放锁");
-});
-```
-
-### 输出
-
-```text
-[0.011s][info][gc,heap] Heap region size: 1M
-[0.013s][info][gc     ] Using G1
-[0.013s][info][gc,heap,coops] Heap address: 0x0000000780000000, size: 2048 MB, Compressed Oops mode: Zero based, Oop shift amount: 3
-[0.831s][info][gc,start     ] GC(0) Pause Young (Normal) (G1 Evacuation Pause)
-[0.831s][info][gc,task      ] GC(0) Using 3 workers of 4 for evacuation
-[0.836s][info][gc,phases    ] GC(0)   Pre Evacuate Collection Set: 0.0ms
-[0.836s][info][gc,phases    ] GC(0)   Evacuate Collection Set: 3.9ms
-[0.836s][info][gc,phases    ] GC(0)   Post Evacuate Collection Set: 0.5ms
-[0.836s][info][gc,phases    ] GC(0)   Other: 0.3ms
-[0.836s][info][gc,heap      ] GC(0) Eden regions: 14->0(74)
-[0.836s][info][gc,heap      ] GC(0) Survivor regions: 0->2(2)
-[0.836s][info][gc,heap      ] GC(0) Old regions: 0->2
-[0.836s][info][gc,heap      ] GC(0) Humongous regions: 0->0
-[0.836s][info][gc,metaspace ] GC(0) Metaspace: 9634K->9634K(1058816K)
-[0.836s][info][gc           ] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 14M->3M(128M) 4.750ms
-[0.836s][info][gc,cpu       ] GC(0) User=0.01s Sys=0.00s Real=0.00s
-Java Version: 11.0.16
-Java VM: Java HotSpot(TM) 64-Bit Server VM
-VM Options: -XX:BiasedLockingStartupDelay=0 -Xlog:gc* 
-
-无锁时
-java.lang.Object object internals:
-OFF  SZ   TYPE DESCRIPTION               VALUE
-  0   8        (object header: mark)     0x000000000000000d (biasable; age: 1)
-  8   4        (object header: class)    0x00001000
- 12   4        (object alignment gap)    
-Instance size: 16 bytes
-Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
-
-[线程-0] 获取锁
-java.lang.Object object internals:
-OFF  SZ   TYPE DESCRIPTION               VALUE
-  0   8        (object header: mark)     0x00007fba1f1c700d (biased: 0x0000001fee87c71c; epoch: 0; age: 1)
-  8   4        (object header: class)    0x00001000
- 12   4        (object alignment gap)    
-Instance size: 16 bytes
-Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
-
-[线程-0] 释放锁
-java.lang.Object object internals:
-OFF  SZ   TYPE DESCRIPTION               VALUE
-  0   8        (object header: mark)     0x00007fba1f1c700d (biased: 0x0000001fee87c71c; epoch: 0; age: 1)
-  8   4        (object header: class)    0x00001000
- 12   4        (object alignment gap)    
-Instance size: 16 bytes
-Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
-
-[线程-1] 获取锁
-java.lang.Object object internals:
-OFF  SZ   TYPE DESCRIPTION               VALUE
-  0   8        (object header: mark)     0x000070000c4cf980 (thin lock: 0x000070000c4cf980)
-  8   4        (object header: class)    0x00001000
- 12   4        (object alignment gap)    
-Instance size: 16 bytes
-Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
-
-[线程-1] 释放锁
-java.lang.Object object internals:
-OFF  SZ   TYPE DESCRIPTION               VALUE
-  0   8        (object header: mark)     0x0000000000000009 (non-biasable; age: 1)
-  8   4        (object header: class)    0x00001000
- 12   4        (object alignment gap)    
-Instance size: 16 bytes
-Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
-
-[4.713s][info][gc,heap,exit ] Heap
-[4.713s][info][gc,heap,exit ]  garbage-first heap   total 131072K, used 23525K [0x0000000780000000, 0x0000000800000000)
-[4.713s][info][gc,heap,exit ]   region size 1024K, 23 young (23552K), 2 survivors (2048K)
-[4.713s][info][gc,heap,exit ]  Metaspace       used 14986K, capacity 15671K, committed 15744K, reserved 1062912K
-[4.713s][info][gc,heap,exit ]   class space    used 1612K, capacity 1895K, committed 1920K, reserved 1048576K
-```
-
-### 总结
-
-由于持有过偏向锁的`线程-0`处于存活状态，所以`线程-1`再次获取锁时，会升级为轻量级锁。
-
-### 源码
-
-[SynchronizedMarkWordTests#testBiasedLocking_Upgrade](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L61)
-
 ## 偏向锁重偏向
 
 ### 运行参数
@@ -368,11 +252,268 @@ Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
 2. `线程-0`、`线程-1`获得偏向锁，而`线程-2`获得轻量级锁（不符合预期）
 3. `线程-0`、`线程-1`、`线程-2`都获得偏向锁（符合预期）
 
-这是因为线程执行完成，可能仍处于存活状态，在两个线程之间加一点等待时间，可提高复现上述结果的几率。
+这是因为，线程执行完成，处于非存活状态，但是 JVM 可能没来得及将该线程移除。所以，在两个线程之间加一点等待时间，可提高复现上述结果的几率。
 
 ### 源码
 
-[SynchronizedMarkWordTests#testBiasedLocking_Rebias](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L90)
+[SynchronizedMarkWordTests#testBiasedLocking_Rebias](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L61)
+
+## 偏向锁 GC 触发撤销
+
+### 运行参数
+
+- `-XX:BiasedLockingStartupDelay=0`：设置偏向锁延迟为`0ms`，即不延迟。
+- `-Xlog:gc*`：打印 GC 日志。
+
+### 代码
+
+```java
+print("无锁时");
+// 创建[线程-0]，获取偏向锁后释放
+runUntilNotAlive(() -> {
+    synchronized (lock) {
+        print("[线程-0] 获取锁");
+    }
+    print("[线程-0] 释放锁");
+});
+// 手动调用 GC 方法
+System.gc();
+// 在 GC 后，偏向锁被撤销
+print("在 GC 后");
+// 创建[线程-1]，又可以获取偏向锁
+runUntilNotAlive(() -> {
+    synchronized (lock) {
+        print("[线程-1] 获取锁");
+    }
+    print("[线程-1] 释放锁");
+});
+```
+
+### 输出
+
+```text
+[0.011s][info][gc,heap] Heap region size: 1M
+[0.013s][info][gc     ] Using G1
+[0.013s][info][gc,heap,coops] Heap address: 0x0000000780000000, size: 2048 MB, Compressed Oops mode: Zero based, Oop shift amount: 3
+[0.811s][info][gc,start     ] GC(0) Pause Young (Normal) (G1 Evacuation Pause)
+[0.811s][info][gc,task      ] GC(0) Using 3 workers of 4 for evacuation
+[0.816s][info][gc,phases    ] GC(0)   Pre Evacuate Collection Set: 0.0ms
+[0.816s][info][gc,phases    ] GC(0)   Evacuate Collection Set: 3.8ms
+[0.816s][info][gc,phases    ] GC(0)   Post Evacuate Collection Set: 0.4ms
+[0.816s][info][gc,phases    ] GC(0)   Other: 0.3ms
+[0.816s][info][gc,heap      ] GC(0) Eden regions: 14->0(74)
+[0.816s][info][gc,heap      ] GC(0) Survivor regions: 0->2(2)
+[0.816s][info][gc,heap      ] GC(0) Old regions: 0->2
+[0.816s][info][gc,heap      ] GC(0) Humongous regions: 0->0
+[0.816s][info][gc,metaspace ] GC(0) Metaspace: 9619K->9619K(1058816K)
+[0.816s][info][gc           ] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 14M->3M(128M) 4.609ms
+[0.816s][info][gc,cpu       ] GC(0) User=0.01s Sys=0.00s Real=0.00s
+Java Version: 11.0.16
+Java VM: Java HotSpot(TM) 64-Bit Server VM
+VM Options: -XX:BiasedLockingStartupDelay=0 -Xlog:gc* 
+
+无锁时
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x000000000000000d (biasable; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-0] 获取锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x00007ff35942700d (biased: 0x0000001ffcd6509c; epoch: 0; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-0] 释放锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x00007ff35942700d (biased: 0x0000001ffcd6509c; epoch: 0; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[3.938s][info][gc,task      ] GC(1) Using 3 workers of 4 for full compaction
+[3.938s][info][gc,start     ] GC(1) Pause Full (System.gc())
+[3.938s][info][gc,phases,start] GC(1) Phase 1: Mark live objects
+[3.943s][info][gc,stringtable ] GC(1) Cleaned string and symbol table, strings: 5856 processed, 30 removed, symbols: 48356 processed, 12 removed
+[3.943s][info][gc,phases      ] GC(1) Phase 1: Mark live objects 4.851ms
+[3.943s][info][gc,phases,start] GC(1) Phase 2: Prepare for compaction
+[3.944s][info][gc,phases      ] GC(1) Phase 2: Prepare for compaction 1.211ms
+[3.944s][info][gc,phases,start] GC(1) Phase 3: Adjust pointers
+[3.946s][info][gc,phases      ] GC(1) Phase 3: Adjust pointers 1.996ms
+[3.946s][info][gc,phases,start] GC(1) Phase 4: Compact heap
+[3.948s][info][gc,phases      ] GC(1) Phase 4: Compact heap 1.777ms
+[3.951s][info][gc,heap        ] GC(1) Eden regions: 20->0(8)
+[3.951s][info][gc,heap        ] GC(1) Survivor regions: 2->0(2)
+[3.951s][info][gc,heap        ] GC(1) Old regions: 2->7
+[3.951s][info][gc,heap        ] GC(1) Humongous regions: 0->0
+[3.951s][info][gc,metaspace   ] GC(1) Metaspace: 14826K->14826K(1062912K)
+[3.951s][info][gc             ] GC(1) Pause Full (System.gc()) 23M->4M(24M) 12.358ms
+[3.951s][info][gc,cpu         ] GC(1) User=0.04s Sys=0.01s Real=0.01s
+在 GC 后
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x0000000000000005 (biasable; age: 0)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-1] 获取锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x00007ff358a4b005 (biased: 0x0000001ffcd6292c; epoch: 0; age: 0)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-1] 释放锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x00007ff358a4b005 (biased: 0x0000001ffcd6292c; epoch: 0; age: 0)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[3.973s][info][gc,heap,exit   ] Heap
+[3.973s][info][gc,heap,exit   ]  garbage-first heap   total 24576K, used 5028K [0x0000000780000000, 0x0000000800000000)
+[3.973s][info][gc,heap,exit   ]   region size 1024K, 1 young (1024K), 0 survivors (0K)
+[3.973s][info][gc,heap,exit   ]  Metaspace       used 14911K, capacity 15607K, committed 15744K, reserved 1062912K
+[3.973s][info][gc,heap,exit   ]   class space    used 1612K, capacity 1895K, committed 1920K, reserved 1048576K
+```
+
+### 总结
+
+当`线程-0`获取并释放偏向锁后，手动调用`System.gc()`后，可以发现偏向锁的 Mark Word 被重置，该现象仅在 OpenJDK 9 及之后的版本中出现，原因不明。
+
+### 源码
+
+[SynchronizedMarkWordTests#testBiasedLocking_RevokeWithGC](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L101)
+
+## 偏向锁升级轻量级锁
+
+### 运行参数
+
+- `-XX:BiasedLockingStartupDelay=0`：设置偏向锁延迟为`0ms`，即不延迟。
+- `-Xlog:gc*`：打印 GC 日志。
+
+### 代码
+
+```java
+print("无锁时");
+// 创建[线程-0]，获取偏向锁后释放，并保持线程处于活跃状态
+run(() -> {
+    synchronized (lock) {
+        print("[线程-0] 获取锁");
+    }
+    print("[线程-0] 释放锁");
+    // 保持线程处于存活状态
+    while (true) {
+        sleep(1);
+    }
+});
+// 保证[线程-0]释放锁
+sleep(1000);
+// 创建[线程-1]，再次获取锁，此时升级为轻量级锁
+run(() -> {
+    synchronized (lock) {
+        print("[线程-1] 获取锁");
+    }
+    print("[线程-1] 释放锁");
+});
+```
+
+### 输出
+
+```text
+[0.011s][info][gc,heap] Heap region size: 1M
+[0.013s][info][gc     ] Using G1
+[0.013s][info][gc,heap,coops] Heap address: 0x0000000780000000, size: 2048 MB, Compressed Oops mode: Zero based, Oop shift amount: 3
+[0.831s][info][gc,start     ] GC(0) Pause Young (Normal) (G1 Evacuation Pause)
+[0.831s][info][gc,task      ] GC(0) Using 3 workers of 4 for evacuation
+[0.836s][info][gc,phases    ] GC(0)   Pre Evacuate Collection Set: 0.0ms
+[0.836s][info][gc,phases    ] GC(0)   Evacuate Collection Set: 3.9ms
+[0.836s][info][gc,phases    ] GC(0)   Post Evacuate Collection Set: 0.5ms
+[0.836s][info][gc,phases    ] GC(0)   Other: 0.3ms
+[0.836s][info][gc,heap      ] GC(0) Eden regions: 14->0(74)
+[0.836s][info][gc,heap      ] GC(0) Survivor regions: 0->2(2)
+[0.836s][info][gc,heap      ] GC(0) Old regions: 0->2
+[0.836s][info][gc,heap      ] GC(0) Humongous regions: 0->0
+[0.836s][info][gc,metaspace ] GC(0) Metaspace: 9634K->9634K(1058816K)
+[0.836s][info][gc           ] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 14M->3M(128M) 4.750ms
+[0.836s][info][gc,cpu       ] GC(0) User=0.01s Sys=0.00s Real=0.00s
+Java Version: 11.0.16
+Java VM: Java HotSpot(TM) 64-Bit Server VM
+VM Options: -XX:BiasedLockingStartupDelay=0 -Xlog:gc* 
+
+无锁时
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x000000000000000d (biasable; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-0] 获取锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x00007fba1f1c700d (biased: 0x0000001fee87c71c; epoch: 0; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-0] 释放锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x00007fba1f1c700d (biased: 0x0000001fee87c71c; epoch: 0; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-1] 获取锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x000070000c4cf980 (thin lock: 0x000070000c4cf980)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[线程-1] 释放锁
+java.lang.Object object internals:
+OFF  SZ   TYPE DESCRIPTION               VALUE
+  0   8        (object header: mark)     0x0000000000000009 (non-biasable; age: 1)
+  8   4        (object header: class)    0x00001000
+ 12   4        (object alignment gap)    
+Instance size: 16 bytes
+Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
+
+[4.713s][info][gc,heap,exit ] Heap
+[4.713s][info][gc,heap,exit ]  garbage-first heap   total 131072K, used 23525K [0x0000000780000000, 0x0000000800000000)
+[4.713s][info][gc,heap,exit ]   region size 1024K, 23 young (23552K), 2 survivors (2048K)
+[4.713s][info][gc,heap,exit ]  Metaspace       used 14986K, capacity 15671K, committed 15744K, reserved 1062912K
+[4.713s][info][gc,heap,exit ]   class space    used 1612K, capacity 1895K, committed 1920K, reserved 1048576K
+```
+
+### 总结
+
+由于持有过偏向锁的`线程-0`处于存活状态，所以`线程-1`再次获取锁时，会升级为轻量级锁。
+
+### 源码
+
+[SynchronizedMarkWordTests#testBiasedLocking_Upgrade](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L128)
 
 ## 轻量级锁重入
 
@@ -483,7 +624,7 @@ Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
 
 ### 源码
 
-[SynchronizedMarkWordTests#testLightweightLocking_Reenter](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L130)
+[SynchronizedMarkWordTests#testLightweightLocking_Reenter](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L157)
 
 ## 轻量级锁膨胀重量级锁
 
@@ -613,7 +754,7 @@ Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
 
 ### 源码
 
-[SynchronizedMarkWordTests#testLightweightLocking_Inflate](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L153)
+[SynchronizedMarkWordTests#testLightweightLocking_Inflate](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L180)
 
 ## 重量级锁降级
 
@@ -931,6 +1072,6 @@ Space losses: 0 bytes internal + 4 bytes external = 4 bytes total
 
 ### 源码
 
-[SynchronizedMarkWordTests#testLightweightLocking_Deflate](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L177)
+[SynchronizedMarkWordTests#testLightweightLocking_Deflate](https://github.com/yihleego/synchronized-markword/blob/main/src/test/java/io/leego/test/SynchronizedMarkWordTests.java#L204)
 
 
