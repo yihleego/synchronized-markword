@@ -2,6 +2,10 @@
 
 本文旨在验证不同场景下通过`synchronized`关键字修饰的对象的对象头的 Mark Word 的情况。
 
+外部依赖：
+
+- [Java Object Layout (JOL)](https://openjdk.java.net/projects/code-tools/jol/)
+
 ## 覆盖 Java 版本
 
 - OpenJDK 7
